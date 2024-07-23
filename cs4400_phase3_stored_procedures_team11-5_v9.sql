@@ -637,54 +637,108 @@ getting off a cruise at its current port.  The person must be on the ship suppor
 the cruise, and the cruise must be docked at a port. The person should no longer be
 assigned to the ship location, and they will only be assigned to the port location. */
 -- -----------------------------------------------------------------------------
-drop procedure if exists person_disembarks;
-delimiter //
-create procedure person_disembarks (in ip_personID varchar(50), in ip_cruiseID varchar (50))
-sp_main: begin
-declare _ship_location varchar (50);
-declare _ship_port_location varchar (50) ; declare_person_port_location varchar (50) ; declare person_ship_location varchar (50);
-declare _is_passenger int default 0; declare _is_ crew int default 0; declare _routeID varchar (50);
-declare _progress int;
-declare _ship_status varchar (100);
-declare _legID varchar (50) ; declare _portID char (3) ;
-select count (*) into _is_ passenger from passenger_books
-where personID = ip_ personid and cruiseID = ip_cruiseid;
-select count(*) into _is_crew from crew
-where personID = ip_personid and assigned_to = ip_cruiseid;
-if _is_passenger = 0 and _is_crew = 0 then leave sp_main; end if;
-select routeID, progress, ship_status into _routeID, _progress, _ship_status from cruise
-where cruiseID = ip_cruiseid;
-if _ship_status != 'docked' then leave sp_main; end if;
-if progress = 0 then
-select legID into _ legID from route_path
-where routeID = _routeID and sequence = 1;
-select departure into _portID
-from leg
-where legID = _ legID;
-else
-select legID into _legID from route_path
-where routeID = _routeID and sequence = _progress;
-select arrival into _portID
-from leg
-where legID = _ legID;
-end if;
-select locationID into _ship_port_location from ship_port
-where portID = portID;
-select locationID into _ship_location from ship
-where cruiselineID = (select support_cruiseline from cruise where cruiseID = ip_cruiseID)
-and ship_name = (select support_ship_name from cruise where cruiseID = ip_cruiseID);
-select locationID into _person_port_location from person_occupies
-where personID = ip_personID and locationID in (select locationID from ship_ port)
-Limit 1;
-select locationID into_person_ship_location from person_occupies
-where personID = ip_personID and locationID in (select locationID from ship)
-limit 1;
-if
-_person_ship_location = _ship_location then
-DELETE FROM person_occupies WHERE personID = ip_personID;
-insert into person_occupies (personID, locationID) values (ip_personID, _ship_port_location);
-end if;
-end // delimiter ;
+-- [9] person_disembarks()
+-- -----------------------------------------------------------------------------
+/* This stored procedure updates the location for people (crew and passengers)
+   getting off a cruise at its current port. The person must be on the ship supporting
+   the cruise, and the cruise must be docked at a port. The person should no longer be
+   assigned to the ship location, and they will only be assigned to the port location. */
+-- -----------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS person_disembarks;
+DELIMITER //
+
+CREATE PROCEDURE person_disembarks (
+    IN ip_personID VARCHAR(50),
+    IN ip_cruiseID VARCHAR(50)
+)
+BEGIN
+    DECLARE _ship_location VARCHAR(50);
+    DECLARE _ship_port_location VARCHAR(50);
+    DECLARE _person_port_location VARCHAR(50);
+    DECLARE _person_ship_location VARCHAR(50);
+    DECLARE _is_passenger INT DEFAULT 0;
+    DECLARE _is_crew INT DEFAULT 0;
+    DECLARE _routeID VARCHAR(50);
+    DECLARE _progress INT;
+    DECLARE _ship_status VARCHAR(100);
+    DECLARE _legID VARCHAR(50);
+    DECLARE _portID CHAR(3);
+
+    -- Check if the person is either a passenger or crew on the cruise
+    SELECT COUNT(*) INTO _is_passenger
+    FROM passenger_books
+    WHERE personID = ip_personID AND cruiseID = ip_cruiseID;
+
+    SELECT COUNT(*) INTO _is_crew
+    FROM crew
+    WHERE personID = ip_personID AND assigned_to = ip_cruiseID;
+
+    IF _is_passenger = 0 AND _is_crew = 0 THEN
+        LEAVE sp_main;
+    END IF;
+
+    -- Retrieve cruise information
+    SELECT routeID, progress, ship_status
+    INTO _routeID, _progress, _ship_status
+    FROM cruise
+    WHERE cruiseID = ip_cruiseID;
+
+    -- Ensure the cruise is docked
+    IF _ship_status != 'docked' THEN
+        LEAVE sp_main;
+    END IF;
+
+    -- Determine the current port
+    IF _progress = 0 THEN
+        SELECT legID INTO _legID
+        FROM route_path
+        WHERE routeID = _routeID AND sequence = 1;
+
+        SELECT departure INTO _portID
+        FROM leg
+        WHERE legID = _legID;
+    ELSE
+        SELECT legID INTO _legID
+        FROM route_path
+        WHERE routeID = _routeID AND sequence = _progress;
+
+        SELECT arrival INTO _portID
+        FROM leg
+        WHERE legID = _legID;
+    END IF;
+
+    -- Retrieve location IDs
+    SELECT locationID INTO _ship_port_location
+    FROM ship_port
+    WHERE portID = _portID;
+
+    SELECT locationID INTO _ship_location
+    FROM ship
+    WHERE cruiselineID = (SELECT support_cruiseline FROM cruise WHERE cruiseID = ip_cruiseID)
+      AND ship_name = (SELECT support_ship_name FROM cruise WHERE cruiseID = ip_cruiseID);
+
+    SELECT locationID INTO _person_port_location
+    FROM person_occupies
+    WHERE personID = ip_personID AND locationID IN (SELECT locationID FROM ship_port)
+    LIMIT 1;
+
+    SELECT locationID INTO _person_ship_location
+    FROM person_occupies
+    WHERE personID = ip_personID AND locationID IN (SELECT locationID FROM ship)
+    LIMIT 1;
+
+    -- Move person from ship to port location
+    IF _person_ship_location = _ship_location THEN
+        DELETE FROM person_occupies
+        WHERE personID = ip_personID;
+
+        INSERT INTO person_occupies (personID, locationID)
+        VALUES (ip_personID, _ship_port_location);
+    END IF;
+END //
+
+DELIMITER ;
+
 
 -- [10] assign_crew()
 -- -----------------------------------------------------------------------------
