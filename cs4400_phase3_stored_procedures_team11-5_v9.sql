@@ -637,68 +637,50 @@ getting off a cruise at its current port.  The person must be on the ship suppor
 the cruise, and the cruise must be docked at a port. The person should no longer be
 assigned to the ship location, and they will only be assigned to the port location. */
 -- -----------------------------------------------------------------------------
-delimiter //
+DELIMITER //
 
--- Drop the procedure if it already exists
-drop procedure if exists person_disembarks;
-
--- Create the procedure
-create procedure person_disembarks(
-    in ip_personID varchar(5), 
-    in ip_cruiseID varchar(5))
-begin
-
-    declare v_shipID varchar(5);
-    declare v_portID varchar(5);
-    declare v_shipLocationID varchar(5);
-    declare v_portLocationID varchar(5);
+CREATE PROCEDURE person_disembarks(IN person_id VARCHAR(50), IN cruise_id VARCHAR(50))
+BEGIN
+    DECLARE ship_id VARCHAR(50);
+    DECLARE port_id VARCHAR(50);
 
     -- Check if the cruise is docked at a port
-    select portID
-    into v_portID
-    from cruise
-    where cruiseID = ip_cruiseID and docked = 1;
+    SELECT cruise.current_port INTO port_id
+    FROM cruise
+    WHERE cruise.cruiseID = cruise_id
+      AND cruise.current_port IS NOT NULL;
 
-    if v_portID is null then
-        select 'Cruise is not docked [9]';
-        leave sp_main;
-    end if;
+    IF port_id IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Cruise is not docked';
+        LEAVE proc;
+    END IF;
 
-    -- Get the shipID supporting the cruise
-    select shipID
-    into v_shipID
-    from cruise
-    where cruiseID = ip_cruiseID;
+    -- Get the ship ID for the cruise
+    SELECT shipID INTO ship_id
+    FROM cruise
+    WHERE cruiseID = cruise_id;
 
-    -- Get the current locationID of the ship
-    select locationID
-    into v_shipLocationID
-    from ship
-    where shipID = v_shipID;
+    -- Check if the person is a crew member on the ship
+    IF EXISTS (SELECT 1 FROM crew WHERE personID = person_id AND shipID = ship_id) THEN
+        -- Update the person's location to the port
+        UPDATE person_occupies
+        SET locationID = port_id
+        WHERE personID = person_id;
+    ELSEIF EXISTS (SELECT 1 FROM passenger WHERE personID = person_id AND shipID = ship_id) THEN
+        -- Update the person's location to the port
+        UPDATE person_occupies
+        SET locationID = port_id
+        WHERE personID = person_id;
+    ELSE
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Person is not on the ship';
+        LEAVE proc;
+    END IF;
+END //
 
-    -- Get the locationID of the port
-    select locationID
-    into v_portLocationID
-    from port
-    where portID = v_portID;
+DELIMITER ;
 
-    -- Check if the person is on the ship
-    if not exists (select 1 from person_occupies where personID = ip_personID and locationID = v_shipLocationID) then
-        select 'Person is not on the ship [9]';
-        leave sp_main;
-    end if;
-
-    -- Remove the person from the ship location
-    delete from person_occupies
-    where personID = ip_personID and locationID = v_shipLocationID;
-
-    -- Add the person to the port location
-    insert into person_occupies (personID, locationID) 
-    values (ip_personID, v_portLocationID);
-
-    select 'Person disembarked successfully [9]';
-end //
-delimiter ;
 
 
 
