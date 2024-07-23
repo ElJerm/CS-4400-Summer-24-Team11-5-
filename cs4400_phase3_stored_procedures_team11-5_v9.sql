@@ -639,90 +639,63 @@ assigned to the ship location, and they will only be assigned to the port locati
 -- -----------------------------------------------------------------------------
 drop procedure if exists person_disembarks;
 delimiter //
-create procedure person_disembarks (in ip_personID varchar(50), in ip_cruiseID varchar(50))
-sp_main: begin
+create procedure person_disembarks(
+    in ip_personID varchar(5), 
+    in ip_cruiseID varchar(5))
+begin
 
-    Declare v_shipLocationID varchar(50);
-    Declare v_clineID varchar(50);
-    Declare v_ship_name varchar(50);
-    Declare v_routeID varchar (50);
-    Declare v_seq int; 
-    Declare v_legID varchar(50);
-    Declare v_port char(3);
-    Declare v_port_locID varchar(50);
-    
-    -- Check if the person exists
-    IF NOT EXISTS (SELECT 1 FROM person WHERE personID = ip_personID) THEN
-        Select 'Person does not exist [9]';
-        LEAVE sp_main;
-    END IF;
+    declare v_shipID varchar(5);
+    declare v_portID varchar(5);
+    declare v_shipLocationID varchar(5);
+    declare v_portLocationID varchar(5);
 
-    -- Check if the cruise exists
-    IF NOT EXISTS (SELECT 1 FROM cruise WHERE cruiseID = ip_cruiseID) THEN
-        Select 'Cruise does not exist [9]';
-        LEAVE sp_main;
-    END IF;
+    -- Check if the cruise is docked at a port
+    select portID
+    into v_portID
+    from cruise
+    where cruiseID = ip_cruiseID and docked = 1;
 
-    -- Check if the cruise is docked
-    IF (select ship_status from cruise where cruiseID = ip_cruiseID) != 'docked' THEN
-        Select 'Cruise is not docked [9]';
-        LEAVE sp_main;
-    END IF;
+    if v_portID is null then
+        select 'Cruise is not docked [9]';
+        leave sp_main;
+    end if;
 
-    -- Get cruise details
-    select support_cruiseline, support_ship_name, progress, routeID
-    into v_clineID, v_ship_name, v_seq, v_routeID
+    -- Get the shipID supporting the cruise
+    select shipID
+    into v_shipID
     from cruise
     where cruiseID = ip_cruiseID;
 
-    -- Get ship location
-    select locationID 
+    -- Get the current locationID of the ship
+    select locationID
     into v_shipLocationID
     from ship
-    where cruiselineID = v_clineID and ship_name = v_ship_name;
-    
-    -- Ensure that seq values don't break
-    if (v_seq = 0) then
-        set v_seq = 1;
-    else
-        set v_seq = v_seq;
-    end if;
-    
-    -- Get legID
-    select legID
-    into v_legID
-    from route_path
-    where routeID = v_routeID and sequence = v_seq;
-    
-    -- Get portID
-    select arrival 
-    into v_port
-    from leg 
-    where legID = v_legID;
-    
-    -- Get port locationID
-    select locationID 
-    into v_port_locID
-    from ship_port
-    where portID = v_port;
-    
+    where shipID = v_shipID;
+
+    -- Get the locationID of the port
+    select locationID
+    into v_portLocationID
+    from port
+    where portID = v_portID;
+
     -- Check if the person is on the ship
-    IF NOT EXISTS (SELECT 1 FROM person_occupies WHERE personID = ip_personID AND locationID = v_shipLocationID) THEN
+    if not exists (select 1 from person_occupies where personID = ip_personID and locationID = v_shipLocationID) then
         select 'Person is not on the ship [9]';
-        LEAVE sp_main;
-    END IF;
-    
-    -- Ensure person is not already at the port location
-    IF NOT EXISTS (SELECT 1 FROM person_occupies WHERE personID = ip_personID AND locationID = v_port_locID) THEN
-        insert into person_occupies(personID, locationID) values (ip_personID, v_port_locID);
-    END IF;
+        leave sp_main;
+    end if;
 
     -- Remove the person from the ship location
-    DELETE FROM person_occupies WHERE personID = ip_personID AND locationID = v_shipLocationID;
+    delete from person_occupies
+    where personID = ip_personID and locationID = v_shipLocationID;
 
-    SELECT 'Person disembarked successfully [9]';
+    -- Add the person to the port location
+    insert into person_occupies (personID, locationID) 
+    values (ip_personID, v_portLocationID);
+
+    select 'Person disembarked successfully [9]';
 end //
 delimiter ;
+
 
 
 -- [10] assign_crew()
