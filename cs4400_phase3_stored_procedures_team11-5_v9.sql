@@ -637,8 +637,12 @@ getting off a cruise at its current port.  The person must be on the ship suppor
 the cruise, and the cruise must be docked at a port. The person should no longer be
 assigned to the ship location, and they will only be assigned to the port location. */
 -- -----------------------------------------------------------------------------
-drop procedure if exists person_disembarks;
 delimiter //
+
+-- Drop the procedure if it already exists
+drop procedure if exists person_disembarks;
+
+-- Create the procedure
 create procedure person_disembarks(
     in ip_personID varchar(5), 
     in ip_cruiseID varchar(5))
@@ -695,6 +699,8 @@ begin
     select 'Person disembarked successfully [9]';
 end //
 delimiter ;
+
+
 
 
 
